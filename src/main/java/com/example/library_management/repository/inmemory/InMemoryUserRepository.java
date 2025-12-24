@@ -2,7 +2,7 @@ package com.example.library_management.repository.inmemory;
 
 import com.example.library_management.models.User;
 import com.example.library_management.repository.UserRepository;
-import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
-@Primary
+@Profile("!prod")
 public class InMemoryUserRepository implements UserRepository {
     private final ConcurrentHashMap<String, User> users = new ConcurrentHashMap<>();
 

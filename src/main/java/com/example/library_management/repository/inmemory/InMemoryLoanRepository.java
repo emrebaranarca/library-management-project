@@ -2,6 +2,7 @@ package com.example.library_management.repository.inmemory;
 
 import com.example.library_management.models.Loan;
 import com.example.library_management.repository.LoanRepository;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
+@Profile("!prod")
 public class InMemoryLoanRepository implements LoanRepository {
 
     private final ConcurrentHashMap<String, Loan> loans = new ConcurrentHashMap<>();
@@ -20,8 +22,20 @@ public class InMemoryLoanRepository implements LoanRepository {
     }
 
     @Override
+    public Optional<Loan> findByIdWithDetails(String id) {
+        // InMemory: entities are already loaded, just return the loan
+        return findById(id);
+    }
+
+    @Override
     public List<Loan> findAll() {
         return new ArrayList<>(loans.values());
+    }
+
+    @Override
+    public List<Loan> findAllWithDetails() {
+        // InMemory: entities are already loaded, just return all loans
+        return findAll();
     }
 
     @Override
@@ -29,6 +43,12 @@ public class InMemoryLoanRepository implements LoanRepository {
         return loans.values().stream()
                 .filter(loan -> userId.equals(loan.getUserId()))
                 .toList();
+    }
+
+    @Override
+    public List<Loan> findByUserIdWithDetails(String userId) {
+        // InMemory: entities are already loaded, just return user's loans
+        return findByUserId(userId);
     }
 
     @Override
@@ -110,5 +130,4 @@ public class InMemoryLoanRepository implements LoanRepository {
     public long count() {
         return loans.size();
     }
-
 }

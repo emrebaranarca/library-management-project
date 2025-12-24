@@ -4,10 +4,12 @@ import com.example.library_management.models.User;
 import com.example.library_management.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.flywaydb.core.Flyway;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -25,7 +27,8 @@ public class DataInitializer {
 
 
     @Bean
-    public CommandLineRunner initData() {
+    @DependsOn("flyway")
+    public CommandLineRunner initData(Flyway flyway) {
         return args -> {
             logBeans();
             // Create default admin if no users exist

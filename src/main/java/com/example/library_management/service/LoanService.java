@@ -11,7 +11,6 @@ import com.example.library_management.models.User;
 import com.example.library_management.repository.LoanRepository;
 import com.example.library_management.repository.UserRepository;
 import com.example.library_management.security.UserPrincipal;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +41,10 @@ public class LoanService {
         // Update overdue loans first
         updateOverdueLoans();
 
+        // Get User entity (needed for @ManyToOne relationship)
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
         // Check if book exists and is available
         Book book = bookService.findBookById(bookId);
         if (book.getAvailableQuantity() <= 0) {
@@ -64,12 +67,12 @@ public class LoanService {
             throw new BadRequestException("You already have this book borrowed");
         }
 
-        // Create new loan
+        // Create new loan with entity relationships
         LocalDateTime now = LocalDateTime.now();
         Loan newLoan = Loan.builder()
                 .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .bookId(bookId)
+                .user(user)   // Set User entity (writes to user_id column)
+                .book(book)   // Set Book entity (writes to book_id column)
                 .borrowedAt(now)
                 .dueDate(now.plusDays(loanDurationDays))
                 .status(Loan.Status.ACTIVE)
@@ -85,66 +88,89 @@ public class LoanService {
         return buildLoanResponse(newLoan);
     }
 
+    /**
+     * Builds LoanResponse from Loan entity.
+     * Uses entity relationships if available (JOIN FETCH), falls back to manual lookup.
+     */
     private LoanResponse buildLoanResponse(Loan loan) {
         LoanResponse response = LoanResponse.fromLoan(loan);
 
-        // Add book title
-        try {
-            Book book = bookService.findBookById(loan.getBookId());
-            response.setBookTitle(book.getTitle());
-        } catch (ResourceNotFoundException e) {
-            response.setBookTitle("Unknown Book");
-        }
-
-        // Add user name
-        userRepository.findById(loan.getUserId())
-                .ifPresentOrElse(
-                        user -> response.setUserName(user.getName()),
-                        () -> response.setUserName("Unknown User")
-                );
-
-        return response;
-    }
-    private void updateOverdueLoans() {
-        LocalDateTime now = LocalDateTime.now();
-
-        // Tüm aktif loan'ları al
-        List<Loan> activeLoans = loanRepository.findByStatus(Loan.Status.ACTIVE);
-
-        // Vadesi geçmiş loan'ları bul ve güncelle
-        List<Loan> overdueLoans = new ArrayList<>();
-
-        for (Loan loan : activeLoans) {
-            if (loan.getDueDate().isBefore(now)) {  // Vade geçmiş mi?
-                loan.setStatus(Loan.Status.OVERDUE);  // Statüyü OVERDUE yap
-                overdueLoans.add(loan);  // Listeye ekle
+        // Get book title - prefer entity relationship (no extra query if JOIN FETCH was used)
+        if (loan.getBook() != null) {
+            response.setBookTitle(loan.getBook().getTitle());
+        } else {
+            try {
+                Book book = bookService.findBookById(loan.getBookId());
+                response.setBookTitle(book.getTitle());
+            } catch (ResourceNotFoundException e) {
+                response.setBookTitle("Unknown Book");
             }
         }
 
-        // Varsa database'e kaydet
+        // Get user name - prefer entity relationship (no extra query if JOIN FETCH was used)
+        if (loan.getUser() != null) {
+            response.setUserName(loan.getUser().getName());
+        } else {
+            userRepository.findById(loan.getUserId())
+                    .ifPresentOrElse(
+                            user -> response.setUserName(user.getName()),
+                            () -> response.setUserName("Unknown User")
+                    );
+        }
+
+        return response;
+    }
+
+    private void updateOverdueLoans() {
+        LocalDateTime now = LocalDateTime.now();
+
+        // Get all active loans
+        List<Loan> activeLoans = loanRepository.findByStatus(Loan.Status.ACTIVE);
+
+        // Find and update overdue loans
+        List<Loan> overdueLoans = new ArrayList<>();
+
+        for (Loan loan : activeLoans) {
+            if (loan.getDueDate().isBefore(now)) {
+                loan.setStatus(Loan.Status.OVERDUE);
+                overdueLoans.add(loan);
+            }
+        }
+
+        // Save if any loans became overdue
         if (!overdueLoans.isEmpty()) {
             loanRepository.saveAll(overdueLoans);
+            log.info("Marked {} loans as overdue", overdueLoans.size());
         }
     }
 
+    /**
+     * Get all loans with User and Book details.
+     * Uses JOIN FETCH - single query instead of N+1!
+     */
     public List<LoanResponse> getAllLoans() {
         updateOverdueLoans();
 
-        return loanRepository.findAll().stream()
+        return loanRepository.findAllWithDetails().stream()
                 .map(this::buildLoanResponse)
                 .toList();
     }
 
+    /**
+     * Get current user's loans with Book details.
+     * Uses JOIN FETCH - single query instead of N+1!
+     */
     public List<LoanResponse> getCurrentUserLoans(UserPrincipal currentUser) {
         updateOverdueLoans();
 
-        return loanRepository.findByUserId(currentUser.getId()).stream()
+        return loanRepository.findByUserIdWithDetails(currentUser.getId()).stream()
                 .map(this::buildLoanResponse)
                 .toList();
     }
 
     public LoanResponse returnBook(String loanId, UserPrincipal currentUser) {
-        Loan loan = loanRepository.findById(loanId)
+        // Use findByIdWithDetails - single query with JOIN FETCH
+        Loan loan = loanRepository.findByIdWithDetails(loanId)
                 .orElseThrow(() -> new ResourceNotFoundException("Loan", "id", loanId));
 
         // Check if the loan belongs to the current user or user is admin
@@ -166,8 +192,9 @@ public class LoanService {
         // Increment available quantity
         bookService.incrementAvailableQuantity(loan.getBookId());
 
-        Book book = bookService.findBookById(loan.getBookId());
-        log.info("Book '{}' returned by user", book.getTitle());
+        log.info("Book '{}' returned by user '{}'", 
+                loan.getBook() != null ? loan.getBook().getTitle() : loan.getBookId(),
+                loan.getUser() != null ? loan.getUser().getName() : loan.getUserId());
 
         return buildLoanResponse(loan);
     }

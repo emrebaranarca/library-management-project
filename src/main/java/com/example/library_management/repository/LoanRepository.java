@@ -77,4 +77,9 @@ public interface LoanRepository {
      * Count total number of loans.
      */
     long count();
+
+
+    Optional<Loan> findByIdWithDetails(String id);
+    List<Loan> findAllWithDetails();
+    List<Loan> findByUserIdWithDetails(String userId);
 }

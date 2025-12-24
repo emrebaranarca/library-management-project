@@ -2,6 +2,7 @@ package com.example.library_management.repository.inmemory;
 
 import com.example.library_management.models.Book;
 import com.example.library_management.repository.BookRepository;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
+@Profile("!prod")
 public class InMemoryBookRepository implements BookRepository {
 
     private final ConcurrentHashMap<String, Book> books=new  ConcurrentHashMap<>();

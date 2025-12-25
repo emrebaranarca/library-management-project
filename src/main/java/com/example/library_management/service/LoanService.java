@@ -7,9 +7,11 @@ import com.example.library_management.exception.ForbiddenException;
 import com.example.library_management.exception.ResourceNotFoundException;
 import com.example.library_management.models.Book;
 import com.example.library_management.models.Loan;
+import com.example.library_management.models.LoanStatistics;
 import com.example.library_management.models.User;
 import com.example.library_management.repository.LoanRepository;
 import com.example.library_management.repository.UserRepository;
+import com.example.library_management.repository.jpa.LoanStatisticsRepository;
 import com.example.library_management.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,11 +30,26 @@ public class LoanService {
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
     private final BookService bookService;
+    private final LoanStatisticsRepository loanStatisticsRepository;
 
-    private static final int MAX_ACTIVE_LOANS = 3;
+    @Value("${app.loan.max-active-loans:3}")
+    private  int MAX_ACTIVE_LOANS;
 
     @Value("${app.loan.duration-days:14}")
     private int loanDurationDays;
+
+    public List<LoanStatistics> getAllLoanStatistics() {
+        return loanStatisticsRepository.findAll();
+    }
+
+    public LoanStatistics getUserLoanStatistics(String userId) {
+        return loanStatisticsRepository.findById(userId)
+                .orElseThrow(()-> new ResourceNotFoundException("LoanStatistics","userId",userId));
+    }
+
+    public List<LoanStatistics> getTopBorrowers(){
+        return loanStatisticsRepository.findTop10ByOrderByTotalLoansDesc();
+    }
 
     public LoanResponse borrowBook(LoanRequest request, UserPrincipal currentUser) {
         String userId = currentUser.getId();
